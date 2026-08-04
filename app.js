@@ -1060,11 +1060,22 @@ async function createAccount({ name, handle, email, password }) {
 
 async function loginAccount({ handleOrEmail, password }) {
   const store = readAuthStore();
+  if (!store.users.length) {
+    throw new Error(
+      "No accounts on this browser yet. Tap “Create account” below — logins only work where you signed up (this device/browser)."
+    );
+  }
   const key = String(handleOrEmail || "").trim().toLowerCase();
+  if (!key) throw new Error("Enter your username or email.");
+  if (!password) throw new Error("Enter your password.");
   const user = store.users.find(
     (u) => u.handle === normalizeHandle(key) || u.email === normalizeEmail(key)
   );
-  if (!user) throw new Error("No account found with that username or email.");
+  if (!user) {
+    throw new Error(
+      "No account found with that username or email on this browser. Create account if this is a new device or the public site."
+    );
+  }
   const passwordHash = await hashPassword(password, user.salt);
   if (passwordHash !== user.passwordHash) throw new Error("Wrong password.");
   writeSession(user.id);
@@ -1112,19 +1123,31 @@ function setAuthMode(mode) {
       ? "Make an account to save your collection, wishlist, and posts."
       : "Welcome back — log in to open your shelf.";
   }
-  if (submit) submit.textContent = signup ? "Create account" : "Log in";
+  if (submit) {
+    submit.textContent = signup ? "Create account" : "Log in";
+    submit.disabled = false;
+  }
   if (switchText) switchText.textContent = signup ? "Already have an account?" : "New here?";
   if (toggle) toggle.textContent = signup ? "Log in" : "Create account";
   if (nameField) nameField.hidden = !signup;
-  if (pass) pass.autocomplete = signup ? "new-password" : "current-password";
+  if (pass) {
+    pass.autocomplete = signup ? "new-password" : "current-password";
+    pass.required = true;
+  }
   if (handleInput) {
     handleInput.placeholder = signup ? "your_handle" : "username or email";
     handleInput.required = true;
+    // Pattern only for signup — login may use an email with @ and dots
+    if (signup) handleInput.setAttribute("pattern", "[a-zA-Z0-9_]{3,24}");
+    else handleInput.removeAttribute("pattern");
     const label = handleInput.previousElementSibling;
     if (label) label.textContent = signup ? "Username" : "Username or email";
   }
   if (emailField) emailField.hidden = !signup;
-  if (emailInput) emailInput.required = signup;
+  if (emailInput) {
+    emailInput.required = signup;
+    if (!signup) emailInput.value = emailInput.value; // keep autofill but not required
+  }
   showAuthError("");
 }
 
@@ -1135,24 +1158,39 @@ function setupAuth() {
     setAuthMode(state.authMode === "signup" ? "login" : "signup");
   });
 
-  document.getElementById("auth-form")?.addEventListener("submit", async (e) => {
+  const form = document.getElementById("auth-form");
+  form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     showAuthError("");
+    const submit = document.getElementById("auth-submit");
     const name = document.getElementById("auth-name")?.value || "";
     const handle = document.getElementById("auth-handle")?.value || "";
     const email = document.getElementById("auth-email")?.value || "";
     const password = document.getElementById("auth-password")?.value || "";
+    if (submit) submit.disabled = true;
     try {
       if (state.authMode === "signup") {
         await createAccount({ name, handle, email, password });
       } else {
-        await loginAccount({ handleOrEmail: handle, password });
+        // Prefer the username/email field; fall back to email box if autofilled only there
+        const key = handle.trim() || email.trim();
+        await loginAccount({ handleOrEmail: key, password });
       }
       enterApp();
     } catch (err) {
-      showAuthError(err.message || "Could not continue.");
+      console.error("Sillage auth error:", err);
+      showAuthError(err?.message || "Could not continue.");
+    } finally {
+      if (submit) submit.disabled = false;
     }
   });
+
+  // Surface native validation (pattern/minlength) instead of a “dead” button
+  form?.addEventListener("invalid", (e) => {
+    e.preventDefault();
+    const t = e.target;
+    showAuthError(t?.validationMessage || "Please fix the highlighted fields.");
+  }, true);
 
   document.getElementById("logout-btn")?.addEventListener("click", () => {
     if (window.confirm("Log out of Sillage on this device?")) logoutAccount();

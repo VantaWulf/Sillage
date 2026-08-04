@@ -133,7 +133,13 @@ textarea {
 }
 
 .auth-error[hidden] {
-  display: none;
+  display: none !important;
+}
+
+/* Author `display` on .field would otherwise override the hidden attribute */
+.field[hidden],
+.auth-form .field[hidden] {
+  display: none !important;
 }
 
 .auth-switch {
@@ -879,12 +885,15 @@ body.auth-locked .tabbar {
 .field select,
 .field input[type="file"],
 .field input[type="search"],
-.field input[type="text"] {
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"] {
   width: 100%;
   border-radius: 0.7rem;
   border: 1.5px solid var(--line);
   background: var(--cream);
   padding: 0.6rem 0.7rem;
+  box-sizing: border-box;
 }
 
 .search-results {
