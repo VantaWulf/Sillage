@@ -4,7 +4,13 @@ Fragrance app: **collect · discover · wishlist · wear**.
 
 Local-first demo in the browser (no backend). Prices and popularity are **simulated** for product exploration.
 
-## Run
+## Live app
+
+**https://vantawulf.github.io/Sillage/**
+
+Accounts and data stay in **your browser** (`localStorage`). AI mannequin posts use a local privacy fallback on this public host (full AI body swap needs `server.py` + `XAI_API_KEY` on your machine).
+
+## Run locally
 
 ```bash
 cd ~/workspace/avyaan-clean
