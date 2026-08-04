@@ -1,24 +1,12 @@
-name: Deploy GitHub Pages
+# Disabled: using GitHub Pages "Deploy from branch: gh-pages" only.
+# Dual deploys (Actions + branch) were racing and delaying the public site.
+name: Deploy GitHub Pages (disabled)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  deploy:
+  skip:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
-          force_orphan: true
-          enable_jekyll: false
+      - run: echo "Use Settings → Pages → branch gh-pages instead."
