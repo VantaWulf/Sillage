@@ -774,19 +774,24 @@ function pickFrag(which, f) {
   }
 }
 
+/** Catalog base URL — on GitHub Pages, prefer same-origin; fall back to raw GitHub if needed. */
+function catalogUrl(file) {
+  return file;
+}
+
 async function loadCatalog() {
   if (state.catalogLoading || state.catalog.length > 1000) return;
   state.catalogLoading = true;
   const status = document.getElementById("catalog-status");
   try {
     // quick popular set first
-    const popRes = await fetch("catalog-popular.json");
+    const popRes = await fetch(catalogUrl("catalog-popular.json"));
     if (popRes.ok) {
       const popular = await popRes.json();
       if (!state.catalog.length) indexCatalog(popular);
       if (status) status.textContent = `Loaded ${popular.length} popular · fetching full catalog…`;
     }
-    const res = await fetch("catalog.json");
+    const res = await fetch(catalogUrl("catalog.json"));
     if (!res.ok) throw new Error(`catalog ${res.status}`);
     const full = await res.json();
     indexCatalog(full);
