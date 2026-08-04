@@ -117,9 +117,14 @@ textarea {
   margin-top: 0.85rem;
 }
 
-.auth-form .btn.wide {
+.auth-form .btn.wide,
+.auth-guest-wrap .btn.wide {
   width: 100%;
   margin-top: 0.25rem;
+}
+
+.auth-guest-wrap {
+  margin: 0.65rem 0 0;
 }
 
 .auth-error {
@@ -130,6 +135,7 @@ textarea {
   color: #9b1c2e;
   font-size: 0.88rem;
   font-weight: 600;
+  display: block;
 }
 
 .auth-error[hidden] {
@@ -138,7 +144,8 @@ textarea {
 
 /* Author `display` on .field would otherwise override the hidden attribute */
 .field[hidden],
-.auth-form .field[hidden] {
+.auth-form .field[hidden],
+[hidden] {
   display: none !important;
 }
 

@@ -748,11 +748,16 @@ function resetHouseFlow(which) {
     return;
   }
   state.addHouse = null;
-  document.getElementById("add-step-house").hidden = false;
-  document.getElementById("add-step-name").hidden = true;
-  document.getElementById("add-fragrance").value = "";
-  document.getElementById("add-search").value = "";
-  document.getElementById("add-results").innerHTML = "";
+  const stepHouse = document.getElementById("add-step-house");
+  const stepName = document.getElementById("add-step-name");
+  const frag = document.getElementById("add-fragrance");
+  const search = document.getElementById("add-search");
+  const results = document.getElementById("add-results");
+  if (stepHouse) stepHouse.hidden = false;
+  if (stepName) stepName.hidden = true;
+  if (frag) frag.value = "";
+  if (search) search.value = "";
+  if (results) results.innerHTML = "";
   renderHouseGrid("add");
 }
 
@@ -999,11 +1004,38 @@ function bytesToHex(buf) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Simple fallback hash when crypto.subtle is unavailable */
+function fallbackHash(password, salt) {
+  return bytesToHex(
+    // expand hashStr into a longer hex string for storage
+    (() => {
+      const parts = [];
+      for (let i = 0; i < 8; i += 1) {
+        const n = hashStr(`${salt}:${password}:${i}`);
+        parts.push(n.toString(16).padStart(8, "0"));
+      }
+      return new Uint8Array(
+        parts
+          .join("")
+          .match(/.{1,2}/g)
+          .map((b) => parseInt(b, 16))
+      );
+    })()
+  );
+}
+
 async function hashPassword(password, salt) {
-  const enc = new TextEncoder();
-  const data = enc.encode(`${salt}:${password}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return bytesToHex(digest);
+  try {
+    if (globalThis.crypto?.subtle?.digest) {
+      const enc = new TextEncoder();
+      const data = enc.encode(`${salt}:${password}`);
+      const digest = await crypto.subtle.digest("SHA-256", data);
+      return bytesToHex(digest);
+    }
+  } catch {
+    /* fall through */
+  }
+  return fallbackHash(password, salt);
 }
 
 function normalizeHandle(h) {
@@ -1089,19 +1121,51 @@ function logoutAccount() {
   document.getElementById("app-shell").hidden = true;
   document.getElementById("auth-gate").hidden = false;
   document.body.classList.add("auth-locked");
-  setAuthMode("login");
+  setAuthMode(readAuthStore().users.length ? "login" : "signup");
 }
 
 function showAuthError(msg) {
   const el = document.getElementById("auth-error");
-  if (!el) return;
+  if (!el) {
+    if (msg) window.alert(msg);
+    return;
+  }
   if (!msg) {
     el.hidden = true;
+    el.setAttribute("hidden", "");
     el.textContent = "";
     return;
   }
   el.hidden = false;
+  el.removeAttribute("hidden");
   el.textContent = msg;
+  // scroll error into view on small screens
+  try {
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch {
+    /* ignore */
+  }
+}
+
+function enterAsGuest() {
+  const guestId = "guest-local";
+  const store = readAuthStore();
+  if (!store.users.some((u) => u.id === guestId)) {
+    store.users.push({
+      id: guestId,
+      name: "Guest",
+      handle: "guest",
+      email: "guest@local",
+      passwordHash: "",
+      salt: "",
+      createdAt: new Date().toISOString(),
+      isGuest: true,
+    });
+    writeAuthStore(store);
+  }
+  writeSession(guestId);
+  state.currentUserId = guestId;
+  enterApp();
 }
 
 function setAuthMode(mode) {
@@ -1113,15 +1177,15 @@ function setAuthMode(mode) {
   const switchText = document.getElementById("auth-switch-text");
   const toggle = document.getElementById("auth-toggle");
   const nameField = document.getElementById("auth-name-field");
+  const emailField = document.getElementById("auth-email-field");
   const pass = document.getElementById("auth-password");
   const handleInput = document.getElementById("auth-handle");
-  const emailInput = document.getElementById("auth-email");
-  const emailField = emailInput?.closest(".field");
+  const handleLabel = document.getElementById("auth-handle-label");
   if (title) title.textContent = signup ? "Create account" : "Log in";
   if (sub) {
     sub.textContent = signup
-      ? "Make an account to save your collection, wishlist, and posts."
-      : "Welcome back — log in to open your shelf.";
+      ? "Make an account to save your collection, wishlist, and posts on this browser."
+      : "Welcome back — use the account you created in this browser.";
   }
   if (submit) {
     submit.textContent = signup ? "Create account" : "Log in";
@@ -1129,68 +1193,79 @@ function setAuthMode(mode) {
   }
   if (switchText) switchText.textContent = signup ? "Already have an account?" : "New here?";
   if (toggle) toggle.textContent = signup ? "Log in" : "Create account";
-  if (nameField) nameField.hidden = !signup;
+  if (nameField) {
+    nameField.hidden = !signup;
+    if (signup) nameField.removeAttribute("hidden");
+    else nameField.setAttribute("hidden", "");
+  }
+  if (emailField) {
+    emailField.hidden = !signup;
+    if (signup) emailField.removeAttribute("hidden");
+    else emailField.setAttribute("hidden", "");
+  }
   if (pass) {
     pass.autocomplete = signup ? "new-password" : "current-password";
-    pass.required = true;
+    pass.placeholder = signup ? "At least 6 characters" : "Password";
   }
   if (handleInput) {
     handleInput.placeholder = signup ? "your_handle" : "username or email";
-    handleInput.required = true;
-    // Pattern only for signup — login may use an email with @ and dots
-    if (signup) handleInput.setAttribute("pattern", "[a-zA-Z0-9_]{3,24}");
-    else handleInput.removeAttribute("pattern");
-    const label = handleInput.previousElementSibling;
-    if (label) label.textContent = signup ? "Username" : "Username or email";
   }
-  if (emailField) emailField.hidden = !signup;
-  if (emailInput) {
-    emailInput.required = signup;
-    if (!signup) emailInput.value = emailInput.value; // keep autofill but not required
-  }
+  if (handleLabel) handleLabel.textContent = signup ? "Username" : "Username or email";
   showAuthError("");
 }
 
-function setupAuth() {
-  setAuthMode("signup");
+async function submitAuth() {
+  showAuthError("");
+  const submit = document.getElementById("auth-submit");
+  const name = document.getElementById("auth-name")?.value || "";
+  const handle = document.getElementById("auth-handle")?.value || "";
+  const email = document.getElementById("auth-email")?.value || "";
+  const password = document.getElementById("auth-password")?.value || "";
+  if (submit) submit.disabled = true;
+  try {
+    if (state.authMode === "signup") {
+      await createAccount({ name, handle, email, password });
+    } else {
+      const key = handle.trim() || email.trim();
+      await loginAccount({ handleOrEmail: key, password });
+    }
+    enterApp();
+  } catch (err) {
+    console.error("Sillage auth error:", err);
+    showAuthError(err?.message || "Could not continue.");
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
 
-  document.getElementById("auth-toggle")?.addEventListener("click", () => {
+function setupAuth() {
+  setAuthMode(readAuthStore().users.length ? "login" : "signup");
+
+  document.getElementById("auth-toggle")?.addEventListener("click", (e) => {
+    e.preventDefault();
     setAuthMode(state.authMode === "signup" ? "login" : "signup");
   });
 
-  const form = document.getElementById("auth-form");
-  form?.addEventListener("submit", async (e) => {
+  document.getElementById("auth-guest")?.addEventListener("click", (e) => {
     e.preventDefault();
-    showAuthError("");
-    const submit = document.getElementById("auth-submit");
-    const name = document.getElementById("auth-name")?.value || "";
-    const handle = document.getElementById("auth-handle")?.value || "";
-    const email = document.getElementById("auth-email")?.value || "";
-    const password = document.getElementById("auth-password")?.value || "";
-    if (submit) submit.disabled = true;
     try {
-      if (state.authMode === "signup") {
-        await createAccount({ name, handle, email, password });
-      } else {
-        // Prefer the username/email field; fall back to email box if autofilled only there
-        const key = handle.trim() || email.trim();
-        await loginAccount({ handleOrEmail: key, password });
-      }
-      enterApp();
+      enterAsGuest();
     } catch (err) {
-      console.error("Sillage auth error:", err);
-      showAuthError(err?.message || "Could not continue.");
-    } finally {
-      if (submit) submit.disabled = false;
+      showAuthError(err?.message || "Could not start guest session.");
     }
   });
 
-  // Surface native validation (pattern/minlength) instead of a “dead” button
-  form?.addEventListener("invalid", (e) => {
+  // Primary path: button click (type=button) — never blocked by HTML5 validation
+  document.getElementById("auth-submit")?.addEventListener("click", (e) => {
     e.preventDefault();
-    const t = e.target;
-    showAuthError(t?.validationMessage || "Please fix the highlighted fields.");
-  }, true);
+    submitAuth();
+  });
+
+  // Enter key still works
+  document.getElementById("auth-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitAuth();
+  });
 
   document.getElementById("logout-btn")?.addEventListener("click", () => {
     if (window.confirm("Log out of Sillage on this device?")) logoutAccount();
@@ -1198,30 +1273,55 @@ function setupAuth() {
 }
 
 function enterApp() {
-  const user = currentUser();
-  if (!user) {
-    logoutAccount();
-    return;
+  try {
+    const user = currentUser();
+    if (!user) {
+      logoutAccount();
+      return;
+    }
+    state.currentUserId = user.id;
+    const gate = document.getElementById("auth-gate");
+    const shell = document.getElementById("app-shell");
+    if (gate) {
+      gate.hidden = true;
+      gate.setAttribute("hidden", "");
+    }
+    if (shell) {
+      shell.hidden = false;
+      shell.removeAttribute("hidden");
+    }
+    document.body.classList.remove("auth-locked");
+    const handleEl = document.getElementById("user-chip-handle");
+    if (handleEl) handleEl.textContent = `@${user.handle}`;
+    // ensure profile matches account
+    update((d) => {
+      d.profile = {
+        id: user.id,
+        name: user.name,
+        handle: user.handle,
+        bio: d.profile?.bio || "Building my shelf",
+      };
+    });
+    loadCatalog().catch((err) => console.warn("catalog load", err));
+    try {
+      fillFragranceSelects();
+    } catch (err) {
+      console.warn("fillFragranceSelects", err);
+    }
+    showPanel("feed");
+    renderStreak();
+  } catch (err) {
+    console.error("enterApp failed", err);
+    showAuthError(err?.message || "Could not open the app after login.");
+    // still try to show shell so user is not stuck
+    document.getElementById("auth-gate")?.setAttribute("hidden", "");
+    const shell = document.getElementById("app-shell");
+    if (shell) {
+      shell.hidden = false;
+      shell.removeAttribute("hidden");
+    }
+    document.body.classList.remove("auth-locked");
   }
-  state.currentUserId = user.id;
-  document.getElementById("auth-gate").hidden = true;
-  document.getElementById("app-shell").hidden = false;
-  document.body.classList.remove("auth-locked");
-  const handleEl = document.getElementById("user-chip-handle");
-  if (handleEl) handleEl.textContent = `@${user.handle}`;
-  // ensure profile matches account
-  update((d) => {
-    d.profile = {
-      id: user.id,
-      name: user.name,
-      handle: user.handle,
-      bio: d.profile?.bio || "Building my shelf",
-    };
-  });
-  loadCatalog();
-  fillFragranceSelects();
-  showPanel("feed");
-  renderStreak();
 }
 
 /* ---------- persistence (per account) ---------- */
