@@ -4,6 +4,17 @@ Fragrance app: **collect · discover · wishlist · wear**.
 
 Local-first demo in the browser. Prices and popularity are **simulated** for product exploration.
 
+## Cloud friends & posts
+
+Accounts and posts can sync online so **friends on other phones** see your wear posts.
+
+1. **Create account / Log in** (not Guest) on each phone with the same username+password.
+2. **People** → add friend by username → they follow you back → you’re friends.
+3. Post with privacy **Friends only** or **Anyone**.
+4. Posts expire after **72 hours**. Collection/wishlist stay on each device.
+
+Requires Vercel env: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (and optional `SILLAGE_SESSION_SECRET`).
+
 ## Live app
 
 | Host | URL |

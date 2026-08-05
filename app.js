@@ -7,9 +7,13 @@ const STORAGE_KEY_PREFIX = "sillage.state.v1.";
 const LEGACY_STORAGE_KEY = "sillage.state.v1";
 const AUTH_KEY = "sillage.auth.v1";
 const SESSION_KEY = "sillage.session.v1";
+const CLOUD_TOKEN_KEY = "sillage.cloud.token.v1";
+const CLOUD_USER_KEY = "sillage.cloud.user.v1";
 const POST_TTL_MS = 72 * 60 * 60 * 1000;
 /** Sentinel fragrance id when posting “no fragrance today” */
 const NO_FRAGRANCE_ID = "__none__";
+/** Production API host (GitHub Pages → Vercel). */
+const DEFAULT_SILLAGE_API_BASE = "https://sillage-vantawulfs-projects.vercel.app";
 
 const state = {
   panel: "feed",
@@ -928,19 +932,39 @@ function saveUserData(userId, data) {
   localStorage.setItem(STORAGE_KEY_PREFIX + userId, JSON.stringify(data));
 }
 
-/** Follow someone: update both accounts on this device when possible. */
-function followUser(targetId) {
+/** Follow someone: local mirror + cloud when possible. */
+function followUser(targetId, opts = {}) {
   const self = meId();
   if (!self || !targetId || self === targetId) return { ok: false, error: "Invalid user." };
-  if (!findPersonById(targetId)) return { ok: false, error: "User not found." };
 
-  update((d) => {
-    if (!d.following.includes(targetId)) d.following.push(targetId);
-  });
+  // Local bookkeeping when we know the user on this device
+  if (findPersonById(targetId) || opts.allowUnknown) {
+    update((d) => {
+      if (!d.following.includes(targetId)) d.following.push(targetId);
+    });
+    try {
+      const their = loadUserData(targetId);
+      if (!their.followers.includes(self)) their.followers.push(self);
+      saveUserData(targetId, their);
+    } catch {
+      /* ignore */
+    }
+  }
 
-  const their = loadUserData(targetId);
-  if (!their.followers.includes(self)) their.followers.push(self);
-  saveUserData(targetId, their);
+  // Cloud follow (works across phones)
+  const token = readCloudToken();
+  if (token) {
+    cloudFetch("/api/follow", {
+      method: "POST",
+      token,
+      body: {
+        token,
+        userId: targetId,
+        handle: opts.handle || "",
+        action: "follow",
+      },
+    }).catch((err) => console.warn("Cloud follow failed", err));
+  }
 
   return { ok: true };
 }
@@ -1058,74 +1082,140 @@ function normalizeEmail(e) {
   return String(e || "").trim().toLowerCase();
 }
 
-async function createAccount({ name, handle, email, password }) {
+function cacheCloudUserLocally(cloudUser, passwordHash, salt) {
   const store = readAuthStore();
+  const existing = store.users.find((u) => u.id === cloudUser.id || u.handle === cloudUser.handle);
+  if (existing) {
+    existing.name = cloudUser.name;
+    existing.handle = cloudUser.handle;
+    existing.id = cloudUser.id;
+    if (passwordHash) existing.passwordHash = passwordHash;
+    if (salt) existing.salt = salt;
+    existing.cloud = true;
+  } else {
+    store.users.push({
+      id: cloudUser.id,
+      name: cloudUser.name,
+      handle: cloudUser.handle,
+      email: cloudUser.email || "",
+      passwordHash: passwordHash || "",
+      salt: salt || "",
+      createdAt: cloudUser.createdAt || new Date().toISOString(),
+      cloud: true,
+    });
+  }
+  writeAuthStore(store);
+  writeSession(cloudUser.id);
+  state.currentUserId = cloudUser.id;
+  writeCloudUser(cloudUser);
+}
+
+async function createAccount({ name, handle, email, password }) {
   const h = normalizeHandle(handle);
   const em = normalizeEmail(email);
   if (h.length < 3) throw new Error("Username must be at least 3 characters.");
   if (!em.includes("@")) throw new Error("Enter a valid email.");
   if (String(password || "").length < 6) throw new Error("Password must be at least 6 characters.");
-  if (store.users.some((u) => u.handle === h)) throw new Error("That username is taken.");
-  if (store.users.some((u) => u.email === em)) throw new Error("That email is already registered.");
 
-  const salt = uid();
-  const passwordHash = await hashPassword(password, salt);
-  const user = {
-    id: uid(),
-    name: String(name || h).trim().slice(0, 40) || h,
-    handle: h,
-    email: em,
-    passwordHash,
-    salt,
-    createdAt: new Date().toISOString(),
-  };
-  store.users.push(user);
-  writeAuthStore(store);
-
-  // Migrate any pre-auth local data into the first account
+  // Prefer cloud so friends on other phones can find you
   try {
-    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacy && !localStorage.getItem(STORAGE_KEY_PREFIX + user.id)) {
-      localStorage.setItem(STORAGE_KEY_PREFIX + user.id, legacy);
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    const cloud = await cloudFetch("/api/auth", {
+      method: "POST",
+      body: { action: "register", name, handle: h, email: em, password },
+    });
+    if (cloud.token) writeCloudToken(cloud.token);
+    const salt = uid();
+    const passwordHash = await hashPassword(password, salt);
+    cacheCloudUserLocally(
+      { ...cloud.user, email: em },
+      passwordHash,
+      salt
+    );
+    try {
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy && !localStorage.getItem(STORAGE_KEY_PREFIX + cloud.user.id)) {
+        localStorage.setItem(STORAGE_KEY_PREFIX + cloud.user.id, legacy);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
-  }
+    return cloud.user;
+  } catch (cloudErr) {
+    // Fallback: local-only account (friends on other phones won't see you)
+    console.warn("Cloud register failed, using local account", cloudErr);
+    const store = readAuthStore();
+    if (store.users.some((u) => u.handle === h)) throw new Error("That username is taken.");
+    if (store.users.some((u) => u.email === em)) throw new Error("That email is already registered.");
+    if (cloudErr.status === 409) throw cloudErr;
 
-  writeSession(user.id);
-  state.currentUserId = user.id;
-  return user;
+    const salt = uid();
+    const passwordHash = await hashPassword(password, salt);
+    const user = {
+      id: uid(),
+      name: String(name || h).trim().slice(0, 40) || h,
+      handle: h,
+      email: em,
+      passwordHash,
+      salt,
+      createdAt: new Date().toISOString(),
+      localOnly: true,
+    };
+    store.users.push(user);
+    writeAuthStore(store);
+    writeSession(user.id);
+    state.currentUserId = user.id;
+    return user;
+  }
 }
 
 async function loginAccount({ handleOrEmail, password }) {
-  const store = readAuthStore();
-  if (!store.users.length) {
-    throw new Error(
-      "No accounts on this browser yet. Tap “Create account” below — logins only work where you signed up (this device/browser)."
-    );
-  }
   const key = String(handleOrEmail || "").trim().toLowerCase();
   if (!key) throw new Error("Enter your username or email.");
   if (!password) throw new Error("Enter your password.");
-  const user = store.users.find(
-    (u) => u.handle === normalizeHandle(key) || u.email === normalizeEmail(key)
-  );
-  if (!user) {
-    throw new Error(
-      "No account found with that username or email on this browser. Create account if this is a new device or the public site."
+
+  // Cloud first — works on any phone
+  try {
+    const cloud = await cloudFetch("/api/auth", {
+      method: "POST",
+      body: { action: "login", handleOrEmail: key, password },
+    });
+    if (cloud.token) writeCloudToken(cloud.token);
+    const salt = uid();
+    const passwordHash = await hashPassword(password, salt);
+    cacheCloudUserLocally(cloud.user, passwordHash, salt);
+    return cloud.user;
+  } catch (cloudErr) {
+    console.warn("Cloud login failed, trying local", cloudErr);
+    const store = readAuthStore();
+    if (!store.users.length) {
+      throw new Error(
+        cloudErr.message ||
+          "No account found. Create an account — it will work on any phone."
+      );
+    }
+    const user = store.users.find(
+      (u) => u.handle === normalizeHandle(key) || u.email === normalizeEmail(key)
     );
+    if (!user) {
+      throw new Error(
+        cloudErr.message ||
+          "No account found with that username or email. Create account if this is a new phone."
+      );
+    }
+    const passwordHash = await hashPassword(password, user.salt);
+    if (passwordHash !== user.passwordHash) throw new Error("Wrong password.");
+    writeSession(user.id);
+    state.currentUserId = user.id;
+    return user;
   }
-  const passwordHash = await hashPassword(password, user.salt);
-  if (passwordHash !== user.passwordHash) throw new Error("Wrong password.");
-  writeSession(user.id);
-  state.currentUserId = user.id;
-  return user;
 }
 
 function logoutAccount() {
   writeSession(null);
   state.currentUserId = null;
+  writeCloudToken("");
+  writeCloudUser(null);
   document.getElementById("app-shell").hidden = true;
   document.getElementById("auth-gate").hidden = false;
   document.body.classList.add("auth-locked");
@@ -1171,6 +1261,8 @@ function enterAsGuest() {
     });
     writeAuthStore(store);
   }
+  writeCloudToken("");
+  writeCloudUser(null);
   writeSession(guestId);
   state.currentUserId = guestId;
   enterApp();
@@ -1192,8 +1284,8 @@ function setAuthMode(mode) {
   if (title) title.textContent = signup ? "Create account" : "Log in";
   if (sub) {
     sub.textContent = signup
-      ? "Make an account to save your collection, wishlist, and posts on this browser."
-      : "Welcome back — use the account you created in this browser.";
+      ? "Create an account to post for friends on any phone. Collection stays on this device."
+      : "Log in with the same username/password on any phone to see friends’ posts.";
   }
   if (submit) {
     submit.textContent = signup ? "Create account" : "Log in";
@@ -1619,32 +1711,81 @@ function bumpStreak(data) {
 /* ---------- mannequin privacy transform ---------- */
 
 /**
- * Production AI backend (Vercel serverless). Used when the page is not
- * same-origin with /api/mannequin (e.g. GitHub Pages).
- * Override with window.SILLAGE_API_BASE if the Vercel domain changes.
- */
-const DEFAULT_SILLAGE_API_BASE = "https://sillage-vantawulfs-projects.vercel.app";
-
-/**
  * Every post: AI replaces the person's body/face with a mannequin,
  * keeping the outfit + background. Uses /api/mannequin (xAI Imagine edit)
  * on Vercel or local server.py with XAI_API_KEY; otherwise local fallback.
  */
-function mannequinApiUrl() {
+function apiBase() {
   if (typeof window !== "undefined" && window.SILLAGE_API_BASE) {
-    return `${String(window.SILLAGE_API_BASE).replace(/\/$/, "")}/api/mannequin`;
+    return String(window.SILLAGE_API_BASE).replace(/\/$/, "");
   }
   const host = (typeof location !== "undefined" && location.hostname) || "";
-  // Local dev: server.py or vercel dev
-  if (host === "127.0.0.1" || host === "localhost") {
-    return "/api/mannequin";
+  if (host === "127.0.0.1" || host === "localhost") return "";
+  if (host.endsWith(".vercel.app")) return "";
+  return DEFAULT_SILLAGE_API_BASE;
+}
+
+function apiUrl(path) {
+  const base = apiBase();
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+function mannequinApiUrl() {
+  return apiUrl("/api/mannequin");
+}
+
+function readCloudToken() {
+  try {
+    return localStorage.getItem(CLOUD_TOKEN_KEY) || "";
+  } catch {
+    return "";
   }
-  // Already on Vercel — same origin
-  if (host.endsWith(".vercel.app")) {
-    return "/api/mannequin";
+}
+
+function writeCloudToken(token) {
+  try {
+    if (!token) localStorage.removeItem(CLOUD_TOKEN_KEY);
+    else localStorage.setItem(CLOUD_TOKEN_KEY, token);
+  } catch {
+    /* ignore */
   }
-  // GitHub Pages / any other host → call Vercel API
-  return `${DEFAULT_SILLAGE_API_BASE}/api/mannequin`;
+}
+
+function readCloudUser() {
+  try {
+    return JSON.parse(localStorage.getItem(CLOUD_USER_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function writeCloudUser(user) {
+  try {
+    if (!user) localStorage.removeItem(CLOUD_USER_KEY);
+    else localStorage.setItem(CLOUD_USER_KEY, JSON.stringify(user));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function cloudFetch(path, { method = "GET", body, token } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const t = token || readCloudToken();
+  if (t) headers["x-sillage-token"] = t;
+  const res = await fetch(apiUrl(path), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(payload.error || `Cloud error ${res.status}`);
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
 }
 
 async function fileToCompressedDataUrl(file, maxEdge = 1024, quality = 0.88) {
@@ -2202,12 +2343,59 @@ function canSeePost(post, data) {
   return areFriends(data, post.userId);
 }
 
+function paintFeedPosts(posts, live) {
+  const list = document.getElementById("feed-list");
+  const empty = document.getElementById("feed-empty");
+  if (!list) return;
+
+  list.innerHTML = "";
+  empty.hidden = posts.length > 0;
+
+  posts.forEach((post) => {
+    const isNone = post.fragranceId === NO_FRAGRANCE_ID || post.noFragrance;
+    const frag = isNone ? null : findFrag(post.fragranceId);
+    const who = post.author
+      ? { name: post.author.name, handle: post.author.handle }
+      : authorLabel(post, live);
+    const hrs = hoursLeft(post.createdAt);
+    let wearLine;
+    if (isNone) {
+      wearLine = `<p class="post-frag">Wearing <strong>no fragrance</strong></p>`;
+    } else if (frag) {
+      wearLine = `<p class="post-frag">Wearing <strong>${escapeHtml(displayFragName(frag))}</strong> · ${escapeHtml(frag.brand)}</p>`;
+    } else if (post.fragranceName) {
+      wearLine = `<p class="post-frag">Wearing <strong>${escapeHtml(post.fragranceName)}</strong>${
+        post.fragranceBrand ? ` · ${escapeHtml(post.fragranceBrand)}` : ""
+      }</p>`;
+    } else {
+      wearLine = `<p class="post-frag">Wearing <strong>a fragrance</strong></p>`;
+    }
+    const imgSrc = post.imageUrl || post.imageDataUrl || "";
+    if (!imgSrc) return;
+    const el = document.createElement("article");
+    el.className = "post-card";
+    el.innerHTML = `
+      <div class="post-head">
+        <div>
+          <p class="post-user">${escapeHtml(who.name)} <span class="muted">@${escapeHtml(who.handle)}</span></p>
+          ${wearLine}
+        </div>
+        <span class="pill subtle">${post.privacy === "public" ? "Public" : "Friends"} · ${hrs < 1 ? "<1h" : Math.ceil(hrs) + "h"} left</span>
+      </div>
+      <div class="post-img-wrap">
+        <img src="${imgSrc}" alt="Outfit on privacy mannequin" class="post-img" />
+      </div>
+    `;
+    list.appendChild(el);
+  });
+}
+
 function renderFeed() {
   const list = document.getElementById("feed-list");
   const empty = document.getElementById("feed-empty");
   if (!list) return;
 
-  // Drop posts/follows for removed accounts; keep only real/known users
+  // Local cleanup
   const live = update((d) => {
     prunePosts(d);
     const self = meId();
@@ -2220,38 +2408,41 @@ function renderFeed() {
     d.followers = d.followers.filter((id) => known.has(id) && id !== self);
   });
 
-  const posts = live.posts
+  const localPosts = live.posts
     .filter((p) => canSeePost(p, live))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  list.innerHTML = "";
-  empty.hidden = posts.length > 0;
+  // Show local immediately, then merge cloud feed (friends on other phones)
+  paintFeedPosts(localPosts, live);
 
-  posts.forEach((post) => {
-    const isNone = post.fragranceId === NO_FRAGRANCE_ID || post.noFragrance;
-    const frag = isNone ? null : findFrag(post.fragranceId);
-    if (!isNone && !frag) return;
-    const who = authorLabel(post, live);
-    const hrs = hoursLeft(post.createdAt);
-    const wearLine = isNone
-      ? `<p class="post-frag">Wearing <strong>no fragrance</strong></p>`
-      : `<p class="post-frag">Wearing <strong>${escapeHtml(displayFragName(frag))}</strong> · ${escapeHtml(frag.brand)}</p>`;
-    const el = document.createElement("article");
-    el.className = "post-card";
-    el.innerHTML = `
-      <div class="post-head">
-        <div>
-          <p class="post-user">${escapeHtml(who.name)} <span class="muted">@${escapeHtml(who.handle)}</span></p>
-          ${wearLine}
-        </div>
-        <span class="pill subtle">${post.privacy === "public" ? "Public" : "Friends"} · ${hrs < 1 ? "<1h" : Math.ceil(hrs) + "h"} left</span>
-      </div>
-      <div class="post-img-wrap">
-        <img src="${post.imageDataUrl}" alt="Outfit on privacy mannequin" class="post-img" />
-      </div>
-    `;
-    list.appendChild(el);
-  });
+  const token = readCloudToken();
+  if (!token && !apiBase() && location.hostname === "localhost") {
+    // still try cloud on production hosts even without token (public posts)
+  }
+
+  cloudFetch(`/api/posts?token=${encodeURIComponent(token || "")}`)
+    .then((cloud) => {
+      const cloudPosts = (cloud.posts || []).map((p) => ({
+        ...p,
+        imageDataUrl: p.imageUrl,
+      }));
+      // Prefer cloud posts; append local-only that aren't already cloud-synced
+      const cloudIds = new Set(cloudPosts.map((p) => p.id));
+      const extras = localPosts.filter((p) => !cloudIds.has(p.id) && !p.cloudId);
+      const merged = [...cloudPosts, ...extras].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      paintFeedPosts(merged, live);
+      if (empty) {
+        empty.textContent =
+          merged.length === 0
+            ? "No live posts yet. Be the first to share what you’re wearing."
+            : empty.textContent;
+      }
+    })
+    .catch((err) => {
+      console.warn("Cloud feed unavailable", err);
+    });
 }
 
 /* ---------- people ---------- */
@@ -2666,26 +2857,71 @@ function setupPost() {
       }
     }
     const privacy = document.querySelector('input[name="privacy"]:checked')?.value || "friends";
+    const frag = isNone ? null : findFrag(fragranceId);
+    const localId = uid();
+    const createdAt = new Date().toISOString();
 
     update((d) => {
       prunePosts(d);
       d.posts.unshift({
-        id: uid(),
+        id: localId,
         userId: meId(),
         fragranceId: isNone ? NO_FRAGRANCE_ID : fragranceId,
+        fragranceName: isNone ? "no fragrance" : frag ? displayFragName(frag) : fragranceId,
+        fragranceBrand: isNone ? "" : frag?.brand || "",
         noFragrance: isNone,
         privacy,
         imageDataUrl: state.postMannequinDataUrl,
-        createdAt: new Date().toISOString(),
+        createdAt,
       });
       bumpStreak(d);
     });
 
+    const imageDataUrl = state.postMannequinDataUrl;
     state.postMannequinDataUrl = null;
     setPostNoFragrance(false);
     dialog?.close();
     showPanel("feed");
     renderStreak();
+
+    // Share to cloud so friends on other phones can see it
+    const token = readCloudToken();
+    if (token && imageDataUrl) {
+      cloudFetch("/api/posts", {
+        method: "POST",
+        token,
+        body: {
+          token,
+          fragranceId: isNone ? NO_FRAGRANCE_ID : fragranceId,
+          fragranceName: isNone ? "no fragrance" : frag ? displayFragName(frag) : fragranceId,
+          fragranceBrand: isNone ? "" : frag?.brand || "",
+          noFragrance: isNone,
+          privacy,
+          image: imageDataUrl,
+        },
+      })
+        .then((res) => {
+          if (res.post?.id) {
+            update((d) => {
+              const p = d.posts.find((x) => x.id === localId);
+              if (p) {
+                p.cloudId = res.post.id;
+                p.imageUrl = res.post.imageUrl;
+              }
+            });
+          }
+          renderFeed();
+        })
+        .catch((err) => {
+          console.warn("Cloud post failed", err);
+          window.alert(
+            (err && err.message) ||
+              "Saved on this phone, but could not share to friends online. Check you’re logged into a cloud account."
+          );
+        });
+    } else if (!token) {
+      console.info("No cloud session — post is local only. Log in/create account for friends on other phones.");
+    }
   });
 }
 
@@ -2706,12 +2942,67 @@ function setupSocial() {
     });
   });
 
-  const addByUsername = () => {
+  const addByUsername = async () => {
     const input = document.getElementById("people-add-input");
     const raw = input?.value || "";
+    const handle = normalizeHandle(String(raw).replace(/^@/, ""));
+    if (!handle) {
+      setPeopleAddStatus("Enter a username.", "is-error");
+      return;
+    }
+
+    // Prefer cloud lookup so friends on other phones can connect
+    const token = readCloudToken();
+    if (token) {
+      try {
+        const res = await cloudFetch("/api/follow", {
+          method: "POST",
+          token,
+          body: { token, handle, action: "follow" },
+        });
+        if (res.user) {
+          // cache so local UI knows them
+          const store = readAuthStore();
+          if (!store.users.some((u) => u.id === res.user.id)) {
+            store.users.push({
+              id: res.user.id,
+              name: res.user.name,
+              handle: res.user.handle,
+              email: "",
+              passwordHash: "",
+              salt: "",
+              createdAt: res.user.createdAt || new Date().toISOString(),
+              cloud: true,
+            });
+            writeAuthStore(store);
+          }
+          update((d) => {
+            if (!d.following.includes(res.user.id)) d.following.push(res.user.id);
+          });
+          setPeopleAddStatus(
+            res.friends
+              ? `You’re friends with @${res.user.handle} — you can see each other’s friends-only posts.`
+              : `Following @${res.user.handle}. When they follow back, you’re friends.`,
+            "is-ok"
+          );
+          renderPeople();
+          renderFeed();
+          return;
+        }
+      } catch (err) {
+        setPeopleAddStatus(err.message || "Could not follow that user.", "is-error");
+        // fall through to local
+      }
+    }
+
     const person = findPersonByHandle(raw);
     if (!person) {
-      setPeopleAddStatus("No account with that username on this device.", "is-error");
+      setPeopleAddStatus(
+        token
+          ? "No cloud account with that username."
+          : "No account with that username on this device. Log in with a cloud account to find friends on other phones.",
+        "is-error"
+      );
       return;
     }
     if (isFollowing(load(), person.id)) {
@@ -2719,7 +3010,7 @@ function setupSocial() {
       renderPeople();
       return;
     }
-    const res = followUser(person.id);
+    const res = followUser(person.id, { handle: person.handle });
     if (!res.ok) {
       setPeopleAddStatus(res.error || "Could not add.", "is-error");
       return;
