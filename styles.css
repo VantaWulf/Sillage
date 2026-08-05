@@ -627,6 +627,24 @@ body.auth-locked .tabbar {
   color: #fff;
 }
 
+.post-none-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.post-none-btn {
+  width: 100%;
+  text-align: center;
+}
+
+.post-none-btn.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
 #add-photo-field.is-optional .hint {
   color: var(--muted);
 }

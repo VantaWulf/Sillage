@@ -8,6 +8,8 @@ const LEGACY_STORAGE_KEY = "sillage.state.v1";
 const AUTH_KEY = "sillage.auth.v1";
 const SESSION_KEY = "sillage.session.v1";
 const POST_TTL_MS = 72 * 60 * 60 * 1000;
+/** Sentinel fragrance id when posting “no fragrance today” */
+const NO_FRAGRANCE_ID = "__none__";
 
 const state = {
   panel: "feed",
@@ -767,6 +769,7 @@ function pickFrag(which, f) {
     document.getElementById("post-fragrance").value = f.id;
     document.getElementById("post-search").value = label;
     document.getElementById("post-results").innerHTML = "";
+    setPostNoFragrance(false);
   } else {
     document.getElementById("add-fragrance").value = f.id;
     document.getElementById("add-search").value = label;
@@ -2033,6 +2036,7 @@ function setupFragranceSearch() {
   let postTimer = null;
   postSearch?.addEventListener("input", () => {
     if (postHidden) postHidden.value = "";
+    setPostNoFragrance(false);
     clearTimeout(postTimer);
     postTimer = setTimeout(() => {
       renderPostCollectionPicker(postSearch.value);
@@ -2224,17 +2228,21 @@ function renderFeed() {
   empty.hidden = posts.length > 0;
 
   posts.forEach((post) => {
-    const frag = findFrag(post.fragranceId);
-    if (!frag) return;
+    const isNone = post.fragranceId === NO_FRAGRANCE_ID || post.noFragrance;
+    const frag = isNone ? null : findFrag(post.fragranceId);
+    if (!isNone && !frag) return;
     const who = authorLabel(post, live);
     const hrs = hoursLeft(post.createdAt);
+    const wearLine = isNone
+      ? `<p class="post-frag">Wearing <strong>no fragrance</strong></p>`
+      : `<p class="post-frag">Wearing <strong>${escapeHtml(displayFragName(frag))}</strong> · ${escapeHtml(frag.brand)}</p>`;
     const el = document.createElement("article");
     el.className = "post-card";
     el.innerHTML = `
       <div class="post-head">
         <div>
           <p class="post-user">${escapeHtml(who.name)} <span class="muted">@${escapeHtml(who.handle)}</span></p>
-          <p class="post-frag">Wearing <strong>${escapeHtml(displayFragName(frag))}</strong> · ${escapeHtml(frag.brand)}</p>
+          ${wearLine}
         </div>
         <span class="pill subtle">${post.privacy === "public" ? "Public" : "Friends"} · ${hrs < 1 ? "<1h" : Math.ceil(hrs) + "h"} left</span>
       </div>
@@ -2554,6 +2562,32 @@ function setupDiscoverWish() {
   });
 }
 
+function setPostNoFragrance(on) {
+  const btn = document.getElementById("post-no-fragrance");
+  const hidden = document.getElementById("post-fragrance");
+  const search = document.getElementById("post-search");
+  const results = document.getElementById("post-results");
+  if (btn) {
+    btn.classList.toggle("active", !!on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  if (on) {
+    if (hidden) hidden.value = NO_FRAGRANCE_ID;
+    if (search) {
+      search.value = "";
+      search.placeholder = "No fragrance selected";
+      search.disabled = true;
+    }
+    if (results) results.innerHTML = "";
+  } else {
+    if (hidden && hidden.value === NO_FRAGRANCE_ID) hidden.value = "";
+    if (search) {
+      search.disabled = false;
+      search.placeholder = "Search your bottles…";
+    }
+  }
+}
+
 function setupPost() {
   const dialog = document.getElementById("post-dialog");
   const fileInput = document.getElementById("post-photo");
@@ -2563,10 +2597,24 @@ function setupPost() {
   document.getElementById("open-post-btn")?.addEventListener("click", () => {
     fillFragranceSelects();
     state.postMannequinDataUrl = null;
+    setPostNoFragrance(false);
     if (preview) preview.hidden = true;
     if (fileInput) fileInput.value = "";
     if (submit) submit.disabled = true;
     dialog?.showModal();
+  });
+
+  document.getElementById("post-no-fragrance")?.addEventListener("click", () => {
+    const btn = document.getElementById("post-no-fragrance");
+    const turningOn = !btn?.classList.contains("active");
+    if (turningOn) {
+      setPostNoFragrance(true);
+    } else {
+      setPostNoFragrance(false);
+      const hidden = document.getElementById("post-fragrance");
+      if (hidden) hidden.value = "";
+      renderPostCollectionPicker("");
+    }
   });
 
   fileInput?.addEventListener("change", async () => {
@@ -2590,6 +2638,7 @@ function setupPost() {
   document.getElementById("post-cancel")?.addEventListener("click", () => {
     document.getElementById("post-form")?.reset();
     document.getElementById("post-fragrance").value = "";
+    setPostNoFragrance(false);
     state.postMannequinDataUrl = null;
     if (preview) preview.hidden = true;
     if (submit) submit.disabled = true;
@@ -2604,14 +2653,17 @@ function setupPost() {
       return;
     }
     const fragranceId = document.getElementById("post-fragrance").value;
+    const isNone = fragranceId === NO_FRAGRANCE_ID;
     if (!fragranceId) {
-      alert("Pick a fragrance from your collection first.");
+      alert("Pick a fragrance from your collection, or tap “No fragrance today”.");
       return;
     }
-    const inCollection = load().collection.some((c) => c.fragranceId === fragranceId);
-    if (!inCollection) {
-      alert("You can only post fragrances in your collection.");
-      return;
+    if (!isNone) {
+      const inCollection = load().collection.some((c) => c.fragranceId === fragranceId);
+      if (!inCollection) {
+        alert("You can only post fragrances in your collection.");
+        return;
+      }
     }
     const privacy = document.querySelector('input[name="privacy"]:checked')?.value || "friends";
 
@@ -2620,7 +2672,8 @@ function setupPost() {
       d.posts.unshift({
         id: uid(),
         userId: meId(),
-        fragranceId,
+        fragranceId: isNone ? NO_FRAGRANCE_ID : fragranceId,
+        noFragrance: isNone,
         privacy,
         imageDataUrl: state.postMannequinDataUrl,
         createdAt: new Date().toISOString(),
@@ -2629,6 +2682,7 @@ function setupPost() {
     });
 
     state.postMannequinDataUrl = null;
+    setPostNoFragrance(false);
     dialog?.close();
     showPanel("feed");
     renderStreak();

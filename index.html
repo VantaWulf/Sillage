@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f1e8" />
     <title>Sillage · fragrance, worn daily</title>
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -247,17 +247,22 @@
         <label class="field">
           <span>From your collection</span>
           <input type="search" id="post-search" placeholder="Search your bottles…" autocomplete="off" />
-          <input type="hidden" id="post-fragrance" required />
+          <input type="hidden" id="post-fragrance" />
           <div id="post-results" class="search-results" role="listbox"></div>
           <p class="hint" id="post-collection-hint">Only fragrances you’ve added to Collection.</p>
         </label>
+        <div class="post-none-wrap">
+          <button type="button" class="status-btn post-none-btn" id="post-no-fragrance" aria-pressed="false">
+            No fragrance today
+          </button>
+          <p class="hint">Or skip bottles if you’re wearing nothing scented.</p>
+        </div>
         <label class="field">
           <span>Outfit photo</span>
           <input type="file" id="post-photo" accept="image/*" required />
         </label>
         <p class="hint">
           Every post runs AI: your body/face become a mannequin; clothing and room stay the same.
-          Needs <code>server.py</code> with an xAI API key for the full body swap.
         </p>
         <div class="mannequin-preview card soft" id="mannequin-preview" hidden>
           <p class="card-label">Privacy preview</p>
@@ -286,6 +291,6 @@
     </dialog>
 
     <script src="data.js?v=4"></script>
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
   </body>
 </html>
