@@ -1616,10 +1616,34 @@ function bumpStreak(data) {
 /* ---------- mannequin privacy transform ---------- */
 
 /**
+ * Production AI backend (Vercel serverless). Used when the page is not
+ * same-origin with /api/mannequin (e.g. GitHub Pages).
+ * Override with window.SILLAGE_API_BASE if the Vercel domain changes.
+ */
+const DEFAULT_SILLAGE_API_BASE = "https://sillage-vantawulfs-projects.vercel.app";
+
+/**
  * Every post: AI replaces the person's body/face with a mannequin,
  * keeping the outfit + background. Uses /api/mannequin (xAI Imagine edit)
- * when server.py is running with XAI_API_KEY; otherwise local fallback.
+ * on Vercel or local server.py with XAI_API_KEY; otherwise local fallback.
  */
+function mannequinApiUrl() {
+  if (typeof window !== "undefined" && window.SILLAGE_API_BASE) {
+    return `${String(window.SILLAGE_API_BASE).replace(/\/$/, "")}/api/mannequin`;
+  }
+  const host = (typeof location !== "undefined" && location.hostname) || "";
+  // Local dev: server.py or vercel dev
+  if (host === "127.0.0.1" || host === "localhost") {
+    return "/api/mannequin";
+  }
+  // Already on Vercel — same origin
+  if (host.endsWith(".vercel.app")) {
+    return "/api/mannequin";
+  }
+  // GitHub Pages / any other host → call Vercel API
+  return `${DEFAULT_SILLAGE_API_BASE}/api/mannequin`;
+}
+
 async function fileToCompressedDataUrl(file, maxEdge = 1024, quality = 0.88) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
@@ -1633,11 +1657,21 @@ async function fileToCompressedDataUrl(file, maxEdge = 1024, quality = 0.88) {
 }
 
 async function renderMannequinAI(dataUrl) {
-  const res = await fetch("/api/mannequin", {
+  const url = mannequinApiUrl();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: dataUrl }),
   });
+  // Deployment protection / HTML login page
+  const ctype = (res.headers.get("content-type") || "").toLowerCase();
+  if (ctype.includes("text/html") || res.status === 401) {
+    const err = new Error(
+      "AI API protected — turn off Vercel Authentication (Require Log In) on project Sillage"
+    );
+    err.fallback = true;
+    throw err;
+  }
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(payload.error || `mannequin API ${res.status}`);
@@ -1708,7 +1742,7 @@ async function renderMannequinFallback(file) {
   ctx.fill();
   ctx.fillStyle = "#f5efe6";
   ctx.font = "600 12px system-ui,sans-serif";
-  ctx.fillText("Offline fallback · start server.py for full AI", 20, H - 23);
+  ctx.fillText("Privacy fallback · full AI needs live API", 20, H - 23);
 
   return canvas.toDataURL("image/jpeg", 0.88);
 }
@@ -1762,9 +1796,14 @@ async function renderMannequin(file) {
   } catch (err) {
     console.warn("AI mannequin failed, using fallback", err);
     if (label) {
-      label.textContent = err.fallback
-        ? "AI offline · privacy fallback (start server.py + XAI key)"
-        : "AI error · privacy fallback";
+      const msg = String(err.message || "");
+      if (/protected|Require Log In|Authentication/i.test(msg)) {
+        label.textContent = "AI blocked · turn off Vercel Require Log In";
+      } else if (err.fallback) {
+        label.textContent = "AI offline · privacy fallback (check XAI_API_KEY on Vercel)";
+      } else {
+        label.textContent = "AI error · privacy fallback";
+      }
     }
     return renderMannequinFallback(file);
   }

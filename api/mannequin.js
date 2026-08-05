@@ -18,12 +18,17 @@ const MANNEQUIN_PROMPT =
   "Keep the same pose, camera angle, and room background unchanged. " +
   "Photorealistic. Do not change the clothes. Do not add text or watermarks.";
 
-function json(res, status, body) {
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json");
+function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
+function json(res, status, body) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  cors(res);
   res.end(JSON.stringify(body));
 }
 
@@ -106,7 +111,10 @@ async function callXaiMannequin(dataUrl, apiKey) {
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") {
-    return json(res, 204, {});
+    res.statusCode = 204;
+    cors(res);
+    res.end();
+    return;
   }
   if (req.method !== "POST") {
     return json(res, 405, { error: "POST only" });
