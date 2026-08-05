@@ -2,13 +2,16 @@
 
 Fragrance app: **collect · discover · wishlist · wear**.
 
-Local-first demo in the browser (no backend). Prices and popularity are **simulated** for product exploration.
+Local-first demo in the browser. Prices and popularity are **simulated** for product exploration.
 
 ## Live app
 
-**https://vantawulf.github.io/Sillage/**
+| Host | URL |
+|------|-----|
+| **GitHub Pages** | https://vantawulf.github.io/Sillage/ |
+| **Vercel** (Hermes-style) | set after first deploy — same repo, auto-redeploys on push to `main` |
 
-Accounts and data stay in **your browser** (`localStorage`). AI mannequin posts use a local privacy fallback on this public host (full AI body swap needs `server.py` + `XAI_API_KEY` on your machine).
+Accounts and data stay in **your browser** (`localStorage`). On Vercel, AI mannequin posts work when `XAI_API_KEY` is set in the project env. On GitHub Pages there is no serverless API — posts use the on-device privacy fallback unless you run `server.py` locally.
 
 ## Run locally
 
@@ -22,6 +25,20 @@ Open **http://127.0.0.1:8080/**
 
 Set `XAI_API_KEY` in the environment or in `../hermes/.env` / `.env`.  
 Plain `python3 -m http.server` still serves the UI but posts use a local privacy fallback (not full AI body swap).
+
+## Deploy (same idea as Hermes)
+
+1. **Push to GitHub** (`main`) → GitHub Actions publishes **Pages**; Vercel rebuilds if the project is linked.
+2. **Vercel env:** Project → Settings → Environment Variables → `XAI_API_KEY` (Production + Preview).
+3. **Build:** `npm run build` copies static assets into `public/`; `api/mannequin.js` is the serverless mannequin endpoint.
+
+```bash
+cd ~/workspace/avyaan-clean
+git add -A && git commit -m "Your message"
+git push origin main
+```
+
+Local folder is linked to **VantaWulf/Sillage** via SSH host `github.com-vantawulf`.
 
 ## Features
 
@@ -37,7 +54,9 @@ Plain `python3 -m http.server` still serves the UI but posts use a local privacy
 
 ## Privacy mannequin
 
-Outfit photos are processed **on-device** (canvas): face/identity is abstracted into a mannequin while keeping outfit color/vibe. No image is uploaded in this demo.
+- **Local:** `server.py` → `POST /api/mannequin` (xAI Imagine edit)
+- **Vercel:** `api/mannequin.js` → same contract
+- **Fallback:** on-device canvas mannequin if the API is missing or fails
 
 ## Catalog
 
@@ -61,4 +80,4 @@ Prices in-app remain **simulated** for wishlist charts.
 
 ## Stack
 
-Static HTML / CSS / JS · `localStorage` · `catalog.json`
+Static HTML / CSS / JS · `localStorage` · `catalog.json` · Vercel serverless (`api/`) · optional local `server.py`
