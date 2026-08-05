@@ -188,8 +188,12 @@ async function storageDownload(path) {
   const res = await fetch(`${url}/storage/v1/object/${BUCKET}/${path}`, {
     headers: { Authorization: `Bearer ${key}`, apikey: key },
   });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Storage download failed: ${res.status}`);
+  // Missing objects may be 404 or 400 depending on Storage version
+  if (res.status === 404 || res.status === 400) return null;
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Storage download failed: ${res.status} ${t.slice(0, 120)}`);
+  }
   const buf = Buffer.from(await res.arrayBuffer());
   const ctype = res.headers.get("content-type") || "";
   return { buf, contentType: ctype };
