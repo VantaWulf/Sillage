@@ -92,6 +92,7 @@ module.exports = async function handler(req, res) {
           noFragrance: !!p.noFragrance,
           privacy: p.privacy,
           imageUrl: p.imageUrl,
+          outfitItems: Array.isArray(p.outfitItems) ? p.outfitItems : [],
           createdAt: p.createdAt,
           author: publicUser(author),
         });
@@ -130,6 +131,24 @@ module.exports = async function handler(req, res) {
       await storageUpload(imagePath, parsed.buffer, parsed.contentType);
       const imageUrl = publicObjectUrl(imagePath);
 
+      const outfitItems = Array.isArray(body.outfitItems)
+        ? body.outfitItems.slice(0, 8).map((it) => ({
+            id: String(it.id || "").slice(0, 40),
+            category: String(it.category || "other").slice(0, 24),
+            name: String(it.name || "Item").slice(0, 80),
+            color: String(it.color || "").slice(0, 40),
+            brandGuess: String(it.brandGuess || "").slice(0, 40),
+            material: String(it.material || "").slice(0, 40),
+            shopQuery: String(it.shopQuery || it.name || "").slice(0, 120),
+            shops: Array.isArray(it.shops)
+              ? it.shops.slice(0, 6).map((s) => ({
+                  name: String(s.name || "Shop").slice(0, 40),
+                  url: String(s.url || "").slice(0, 500),
+                }))
+              : [],
+          }))
+        : [];
+
       const post = {
         id,
         userId,
@@ -142,6 +161,7 @@ module.exports = async function handler(req, res) {
         privacy,
         imageUrl,
         imagePath,
+        outfitItems,
         createdAt,
       };
       // name sorts newest first when listing desc by name if we prefix timestamp

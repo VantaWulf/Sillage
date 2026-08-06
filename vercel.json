@@ -7,6 +7,10 @@
       "maxDuration": 60,
       "memory": 1024
     },
+    "api/outfit.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "api/posts.js": {
       "maxDuration": 30,
       "memory": 1024

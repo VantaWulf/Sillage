@@ -759,6 +759,95 @@ body.auth-locked .tabbar {
   object-fit: cover;
 }
 
+/* shop the look */
+.outfit-shop,
+.post-outfit-preview {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--line);
+  background: var(--cream-card);
+}
+
+.outfit-shop-title {
+  margin: 0 0 0.15rem;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--blue);
+}
+
+.outfit-list {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.outfit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.75rem;
+  background: var(--cream);
+  border: 1px solid var(--line);
+}
+
+.outfit-item-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+}
+
+.outfit-cat {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--blue);
+  background: var(--blue-soft);
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.outfit-name {
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.outfit-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.outfit-shops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.shop-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--blue);
+  text-decoration: none;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 58, 138, 0.2);
+  background: #fff;
+}
+
+.shop-link:hover {
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue);
+}
+
 .row-actions {
   display: flex;
   flex-wrap: wrap;

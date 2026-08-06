@@ -19,6 +19,8 @@ const state = {
   panel: "feed",
   colFilter: "owned",
   postMannequinDataUrl: null,
+  /** @type {Array<{id:string,category:string,name:string,color:string,brandGuess:string,shopQuery:string,shops:Array<{name:string,url:string}>}>} */
+  postOutfitItems: [],
   catalog: [],
   catalogById: new Map(),
   /** @type {{ name: string, count: number }[]} */
@@ -1735,6 +1737,66 @@ function mannequinApiUrl() {
   return apiUrl("/api/mannequin");
 }
 
+function outfitApiUrl() {
+  return apiUrl("/api/outfit");
+}
+
+/**
+ * Identify clothing pieces + shop search links from an outfit photo.
+ * Non-fatal: returns [] if API fails.
+ */
+async function identifyOutfitPieces(dataUrl) {
+  try {
+    const res = await fetch(outfitApiUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    const ctype = (res.headers.get("content-type") || "").toLowerCase();
+    if (ctype.includes("text/html") || res.status === 401) return [];
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn("outfit ID failed", payload.error || res.status);
+      return [];
+    }
+    return Array.isArray(payload.items) ? payload.items : [];
+  } catch (err) {
+    console.warn("outfit ID error", err);
+    return [];
+  }
+}
+
+function outfitShopHtml(items) {
+  if (!items || !items.length) return "";
+  const rows = items
+    .map((it) => {
+      const shops = (it.shops || [])
+        .slice(0, 4)
+        .map(
+          (s) =>
+            `<a class="shop-link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+              s.name
+            )}</a>`
+        )
+        .join("");
+      const meta = [it.color, it.brandGuess, it.material].filter(Boolean).join(" · ");
+      return `<li class="outfit-item">
+        <div class="outfit-item-main">
+          <span class="outfit-cat">${escapeHtml(it.category || "piece")}</span>
+          <strong class="outfit-name">${escapeHtml(it.name || "Item")}</strong>
+          ${meta ? `<span class="outfit-meta">${escapeHtml(meta)}</span>` : ""}
+        </div>
+        <div class="outfit-shops">${shops}</div>
+      </li>`;
+    })
+    .join("");
+  return `<div class="outfit-shop">
+    <p class="outfit-shop-title">Shop the look</p>
+    <p class="hint-inline">AI-matched similar items — opens store search (not exact checkout).</p>
+    <ul class="outfit-list">${rows}</ul>
+  </div>`;
+}
+
 function readCloudToken() {
   try {
     return localStorage.getItem(CLOUD_TOKEN_KEY) || "";
@@ -2372,6 +2434,7 @@ function paintFeedPosts(posts, live) {
     }
     const imgSrc = post.imageUrl || post.imageDataUrl || "";
     if (!imgSrc) return;
+    const shopBlock = outfitShopHtml(post.outfitItems);
     const el = document.createElement("article");
     el.className = "post-card";
     el.innerHTML = `
@@ -2385,6 +2448,7 @@ function paintFeedPosts(posts, live) {
       <div class="post-img-wrap">
         <img src="${imgSrc}" alt="Outfit on privacy mannequin" class="post-img" />
       </div>
+      ${shopBlock}
     `;
     list.appendChild(el);
   });
@@ -2788,10 +2852,16 @@ function setupPost() {
   document.getElementById("open-post-btn")?.addEventListener("click", () => {
     fillFragranceSelects();
     state.postMannequinDataUrl = null;
+    state.postOutfitItems = [];
     setPostNoFragrance(false);
     if (preview) preview.hidden = true;
     if (fileInput) fileInput.value = "";
     if (submit) submit.disabled = true;
+    const shopPreview = document.getElementById("post-outfit-preview");
+    if (shopPreview) {
+      shopPreview.hidden = true;
+      shopPreview.innerHTML = "";
+    }
     dialog?.showModal();
   });
 
@@ -2812,13 +2882,32 @@ function setupPost() {
     const file = fileInput.files?.[0];
     if (!file) return;
     if (submit) submit.disabled = true;
+    state.postOutfitItems = [];
+    const shopPreview = document.getElementById("post-outfit-preview");
+    if (shopPreview) {
+      shopPreview.hidden = true;
+      shopPreview.innerHTML = "";
+    }
     if (preview) {
       preview.hidden = false;
       preview.querySelector(".card-label").textContent = "Creating privacy mannequin…";
     }
     try {
       state.postMannequinDataUrl = await renderMannequin(file);
-      if (preview) preview.querySelector(".card-label").textContent = "Privacy preview";
+      if (preview) preview.querySelector(".card-label").textContent = "Finding outfit pieces…";
+      // Identify clothes on the privacy image (or original compressed)
+      const idSource =
+        state.postMannequinDataUrl || (await fileToCompressedDataUrl(file, 1024, 0.88));
+      state.postOutfitItems = await identifyOutfitPieces(idSource);
+      if (preview) {
+        preview.querySelector(".card-label").textContent = state.postOutfitItems.length
+          ? `Privacy preview · ${state.postOutfitItems.length} pieces tagged`
+          : "Privacy preview";
+      }
+      if (shopPreview && state.postOutfitItems.length) {
+        shopPreview.hidden = false;
+        shopPreview.innerHTML = outfitShopHtml(state.postOutfitItems);
+      }
       if (submit) submit.disabled = false;
     } catch (err) {
       console.error(err);
@@ -2831,6 +2920,12 @@ function setupPost() {
     document.getElementById("post-fragrance").value = "";
     setPostNoFragrance(false);
     state.postMannequinDataUrl = null;
+    state.postOutfitItems = [];
+    const shopPreview = document.getElementById("post-outfit-preview");
+    if (shopPreview) {
+      shopPreview.hidden = true;
+      shopPreview.innerHTML = "";
+    }
     if (preview) preview.hidden = true;
     if (submit) submit.disabled = true;
     resetHouseFlow("post");
@@ -2861,6 +2956,10 @@ function setupPost() {
     const localId = uid();
     const createdAt = new Date().toISOString();
 
+    const outfitItems = Array.isArray(state.postOutfitItems)
+      ? state.postOutfitItems.slice()
+      : [];
+
     update((d) => {
       prunePosts(d);
       d.posts.unshift({
@@ -2872,6 +2971,7 @@ function setupPost() {
         noFragrance: isNone,
         privacy,
         imageDataUrl: state.postMannequinDataUrl,
+        outfitItems,
         createdAt,
       });
       bumpStreak(d);
@@ -2879,6 +2979,7 @@ function setupPost() {
 
     const imageDataUrl = state.postMannequinDataUrl;
     state.postMannequinDataUrl = null;
+    state.postOutfitItems = [];
     setPostNoFragrance(false);
     dialog?.close();
     showPanel("feed");
@@ -2898,6 +2999,7 @@ function setupPost() {
           noFragrance: isNone,
           privacy,
           image: imageDataUrl,
+          outfitItems,
         },
       })
         .then((res) => {
