@@ -798,13 +798,32 @@ body.auth-locked .tabbar {
 }
 
 .outfit-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.55rem 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
   border-radius: 0.75rem;
   background: var(--cream);
   border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.outfit-item-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.7rem 0.8rem;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(30, 58, 138, 0.2);
+  touch-action: manipulation;
+}
+
+.outfit-item-link:hover,
+.outfit-item-link:focus-visible {
+  background: var(--blue-soft);
+  outline: none;
 }
 
 .outfit-item-main {
@@ -812,6 +831,7 @@ body.auth-locked .tabbar {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.35rem 0.55rem;
+  min-width: 0;
 }
 
 .outfit-cat {
@@ -835,29 +855,16 @@ body.auth-locked .tabbar {
   color: var(--muted);
 }
 
-.outfit-shops {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.shop-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.75rem;
-  font-weight: 700;
+.outfit-go {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
   color: var(--blue);
-  text-decoration: none;
-  padding: 0.3rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid rgba(30, 58, 138, 0.2);
-  background: #fff;
+  white-space: nowrap;
 }
 
-.shop-link:hover {
-  background: var(--blue);
-  color: #fff;
-  border-color: var(--blue);
+.outfit-item-link:hover .outfit-go {
+  text-decoration: underline;
 }
 
 .row-actions {

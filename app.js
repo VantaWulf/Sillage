@@ -1766,33 +1766,38 @@ async function identifyOutfitPieces(dataUrl) {
   }
 }
 
+function primaryShopUrl(it) {
+  const fromShops = (it.shops || []).find((s) => s && s.url)?.url;
+  if (fromShops) return fromShops;
+  const q = [it.shopQuery, it.brandGuess, it.color, it.name]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || "clothing";
+  return `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(q)}`;
+}
+
 function outfitShopHtml(items) {
   if (!items || !items.length) return "";
   const rows = items
     .map((it) => {
-      const shops = (it.shops || [])
-        .slice(0, 4)
-        .map(
-          (s) =>
-            `<a class="shop-link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(
-              s.name
-            )}</a>`
-        )
-        .join("");
+      const href = primaryShopUrl(it);
       const meta = [it.color, it.brandGuess, it.material].filter(Boolean).join(" · ");
+      // Whole row is a link — tap item name/card → open shop search
       return `<li class="outfit-item">
-        <div class="outfit-item-main">
-          <span class="outfit-cat">${escapeHtml(it.category || "piece")}</span>
-          <strong class="outfit-name">${escapeHtml(it.name || "Item")}</strong>
-          ${meta ? `<span class="outfit-meta">${escapeHtml(meta)}</span>` : ""}
-        </div>
-        <div class="outfit-shops">${shops}</div>
+        <a class="outfit-item-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">
+          <span class="outfit-item-main">
+            <span class="outfit-cat">${escapeHtml(it.category || "piece")}</span>
+            <strong class="outfit-name">${escapeHtml(it.name || "Item")}</strong>
+            ${meta ? `<span class="outfit-meta">${escapeHtml(meta)}</span>` : ""}
+          </span>
+          <span class="outfit-go" aria-hidden="true">Shop →</span>
+        </a>
       </li>`;
     })
     .join("");
   return `<div class="outfit-shop">
     <p class="outfit-shop-title">Shop the look</p>
-    <p class="hint-inline">AI-matched similar items — opens store search (not exact checkout).</p>
+    <p class="hint-inline">Tap a piece to search where to buy something similar.</p>
     <ul class="outfit-list">${rows}</ul>
   </div>`;
 }
