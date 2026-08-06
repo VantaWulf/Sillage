@@ -1,0 +1,11 @@
+{
+  "name": "sillage",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.js",
+    "vercel-build": "node scripts/build.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

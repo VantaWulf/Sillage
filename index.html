@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f1e8" />
+    <title>Sillage · fragrance, worn daily</title>
+    <link rel="stylesheet" href="styles.css?v=12" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <!-- AUTH GATE -->
+    <div id="auth-gate" class="auth-gate">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="brand-name">Sillage</p>
+            <p class="brand-tag">find · wear · share</p>
+          </div>
+        </div>
+        <h1 id="auth-title">Create account</h1>
+        <p class="sub" id="auth-sub">Make an account to save your collection, wishlist, and posts.</p>
+
+        <!-- novalidate: we validate in JS so the button never “does nothing” -->
+        <form id="auth-form" class="auth-form" novalidate>
+          <label class="field" id="auth-name-field">
+            <span>Display name</span>
+            <input type="text" id="auth-name" autocomplete="name" maxlength="40" placeholder="Your name" />
+          </label>
+          <label class="field" id="auth-handle-field">
+            <span id="auth-handle-label">Username</span>
+            <input type="text" id="auth-handle" autocomplete="username" maxlength="64" placeholder="your_handle" />
+          </label>
+          <label class="field" id="auth-email-field">
+            <span>Email</span>
+            <input type="email" id="auth-email" autocomplete="email" placeholder="you@email.com" />
+          </label>
+          <label class="field" id="auth-password-field">
+            <span>Password</span>
+            <input type="password" id="auth-password" autocomplete="new-password" placeholder="At least 6 characters" />
+          </label>
+          <p class="auth-error" id="auth-error" hidden></p>
+          <button type="button" class="btn primary wide" id="auth-submit">Create account</button>
+        </form>
+
+        <p class="auth-switch">
+          <span id="auth-switch-text">Already have an account?</span>
+          <button type="button" class="linkish" id="auth-toggle">Log in</button>
+        </p>
+        <p class="auth-guest-wrap">
+          <button type="button" class="btn ghost wide" id="auth-guest">Continue as guest</button>
+        </p>
+        <p class="hint auth-local-note">Accounts stay in <strong>this browser only</strong>. The public site does not share logins with localhost — create a new account here once, or use guest.</p>
+      </div>
+    </div>
+
+    <div id="app-shell" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <p class="brand-name">Sillage</p>
+          <p class="brand-tag">find · wear · share</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="streak-chip" id="streak-chip" title="Daily post streak">
+          <span id="streak-num">0</span>
+          <span class="streak-label">day streak</span>
+        </div>
+        <div class="user-chip" id="user-chip" title="Account">
+          <span id="user-chip-handle">@you</span>
+          <button type="button" class="linkish" id="logout-btn">Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="app">
+      <!-- FEED -->
+      <section class="panel active" data-panel="feed" aria-label="Feed">
+        <div class="panel-head">
+          <h1>Today’s wear</h1>
+          <button type="button" class="btn primary sm" id="open-post-btn">Post</button>
+        </div>
+        <p class="sub">Posts vanish after 72 hours. Friends or public — your call.</p>
+        <div id="feed-list" class="feed-list"></div>
+        <p class="empty" id="feed-empty">No live posts yet. Be the first to share what you’re wearing.</p>
+      </section>
+
+      <!-- COLLECTION -->
+      <section class="panel" data-panel="collection" aria-label="Collection" hidden>
+        <div class="panel-head">
+          <h1>Collection</h1>
+          <button type="button" class="btn primary sm" id="open-add-btn">Add</button>
+        </div>
+        <p class="sub">Bottles you own and ones you’ve tried — rate smell, performance, longevity. You must add your own bottle photo for each one.</p>
+        <p class="catalog-badge" id="catalog-badge">Catalog loading…</p>
+        <div class="seg" role="tablist">
+          <button type="button" class="seg-btn active" data-col-filter="owned">Owned</button>
+          <button type="button" class="seg-btn" data-col-filter="tried">Tried</button>
+          <button type="button" class="seg-btn" data-col-filter="all">All</button>
+        </div>
+        <div id="collection-list" class="card-list"></div>
+        <p class="empty" id="collection-empty">Your shelf is empty. Add a fragrance you own or tried.</p>
+      </section>
+
+      <!-- DISCOVER -->
+      <section class="panel" data-panel="discover" aria-label="Discover" hidden>
+        <h1>For you</h1>
+        <p class="sub">Prioritizes the same houses you collect, plus shared notes & styles from bottles you rated highly.</p>
+        <div id="recs-list" class="card-list"></div>
+        <p class="empty" id="recs-empty">Rate a few fragrances in Collection so we can match notes.</p>
+      </section>
+
+      <!-- WISHLIST -->
+      <section class="panel" data-panel="wishlist" aria-label="Wishlist" hidden>
+        <h1>Wishlist</h1>
+        <p class="sub">Price trends, cheapest shops, and buzz — tap a bottle for details.</p>
+        <div id="wishlist-list" class="card-list"></div>
+        <p class="empty" id="wishlist-empty">Nothing saved yet. Heart a rec or search to add one.</p>
+      </section>
+
+      <!-- SOCIAL -->
+      <section class="panel" data-panel="social" aria-label="People" hidden>
+        <div class="panel-head">
+          <h1>People</h1>
+        </div>
+        <p class="sub">Find friends by username (works across phones). Follow them — when they follow back, you’re friends and can see each other’s posts.</p>
+
+        <div class="people-add card">
+          <p class="card-label">Add by username</p>
+          <div class="people-add-row">
+            <input type="text" id="people-add-input" placeholder="@username" autocomplete="off" maxlength="24" />
+            <button type="button" class="btn primary sm" id="people-add-btn">Add</button>
+          </div>
+          <p class="hint" id="people-add-status"></p>
+        </div>
+
+        <label class="field">
+          <span>Search usernames</span>
+          <input type="search" id="people-search" placeholder="Search by name or @username…" autocomplete="off" />
+        </label>
+
+        <div class="seg" role="tablist" id="people-filter">
+          <button type="button" class="seg-btn active" data-people-filter="all">All</button>
+          <button type="button" class="seg-btn" data-people-filter="following">Following</button>
+          <button type="button" class="seg-btn" data-people-filter="friends">Friends</button>
+        </div>
+
+        <div id="people-list" class="card-list"></div>
+        <p class="empty" id="people-empty" hidden>No people found. Create another account on this device or add someone by @username.</p>
+      </section>
+    </main>
+
+    <nav class="tabbar" aria-label="Main">
+      <button type="button" class="tab active" data-nav="feed">
+        <span class="tab-ico" aria-hidden="true">◎</span> Feed
+      </button>
+      <button type="button" class="tab" data-nav="collection">
+        <span class="tab-ico" aria-hidden="true">▣</span> Collection
+      </button>
+      <button type="button" class="tab" data-nav="discover">
+        <span class="tab-ico" aria-hidden="true">✦</span> Discover
+      </button>
+      <button type="button" class="tab" data-nav="wishlist">
+        <span class="tab-ico" aria-hidden="true">♡</span> Wishlist
+      </button>
+      <button type="button" class="tab" data-nav="social">
+        <span class="tab-ico" aria-hidden="true">◉</span> People
+      </button>
+    </nav>
+    </div><!-- #app-shell -->
+
+    <!-- ADD / RATE FRAGRANCE -->
+    <dialog id="add-dialog" class="dialog dialog-lg">
+      <form method="dialog" class="dialog-body" id="add-form">
+        <h2>Add fragrance</h2>
+        <p class="hint" id="catalog-status">Loading catalog…</p>
+
+        <!-- Step 1: house -->
+        <div id="add-step-house">
+          <label class="field">
+            <span>1 · Pick a house</span>
+            <input type="search" id="add-house-search" placeholder="Search houses…" autocomplete="off" />
+          </label>
+          <div id="add-house-grid" class="house-grid" role="listbox" aria-label="Fragrance houses"></div>
+        </div>
+
+        <!-- Step 2: name within house -->
+        <div id="add-step-name" hidden>
+          <div class="house-selected" id="add-house-selected"></div>
+          <button type="button" class="linkish" id="add-change-house">← Change house</button>
+          <label class="field">
+            <span>2 · Search within house</span>
+            <input type="search" id="add-search" placeholder="Fragrance name…" autocomplete="off" />
+            <input type="hidden" id="add-fragrance" required />
+            <div id="add-results" class="search-results" role="listbox"></div>
+          </label>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Status</span>
+          <div class="status-btns" role="group" aria-label="Status">
+            <button type="button" class="status-btn active" data-status="owned" id="status-owned">
+              I own this
+            </button>
+            <button type="button" class="status-btn" data-status="tried" id="status-tried">
+              I tried this
+            </button>
+          </div>
+          <input type="hidden" id="add-status" value="owned" />
+        </div>
+        <label class="field" id="add-photo-field">
+          <span>Your bottle photo <span id="add-photo-req-label">(required for owned)</span></span>
+          <input type="file" id="add-bottle-photo" accept="image/*" />
+          <p class="hint" id="add-photo-hint">
+            Required when you own it. Optional if you only tried it.
+          </p>
+        </label>
+        <p class="field-label">Quick assessment (1–5)</p>
+        <div class="rate-grid">
+          <label>Smell <input type="range" id="rate-smell" min="1" max="5" value="4" /> <span id="rate-smell-v">4</span></label>
+          <label>Performance <input type="range" id="rate-performance" min="1" max="5" value="3" /> <span id="rate-performance-v">3</span></label>
+          <label>Longevity <input type="range" id="rate-longevity" min="1" max="5" value="3" /> <span id="rate-longevity-v">3</span></label>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn ghost" id="add-cancel">Cancel</button>
+          <button type="submit" class="btn primary" id="add-save">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- WISHLIST DETAIL -->
+    <dialog id="wish-dialog" class="dialog dialog-lg">
+      <div class="dialog-body">
+        <button type="button" class="dialog-x" id="wish-close" aria-label="Close">×</button>
+        <div id="wish-detail"></div>
+      </div>
+    </dialog>
+
+    <!-- POST -->
+    <dialog id="post-dialog" class="dialog dialog-lg">
+      <form method="dialog" class="dialog-body" id="post-form">
+        <h2>What are you wearing?</h2>
+        <label class="field">
+          <span>From your collection</span>
+          <input type="search" id="post-search" placeholder="Search your bottles…" autocomplete="off" />
+          <input type="hidden" id="post-fragrance" />
+          <div id="post-results" class="search-results" role="listbox"></div>
+          <p class="hint" id="post-collection-hint">Only fragrances you’ve added to Collection.</p>
+        </label>
+        <div class="post-none-wrap">
+          <button type="button" class="status-btn post-none-btn" id="post-no-fragrance" aria-pressed="false">
+            No fragrance today
+          </button>
+          <p class="hint" id="post-none-status">Tap to post without a bottle — still need an outfit photo.</p>
+        </div>
+        <label class="field">
+          <span>Outfit photo</span>
+          <input type="file" id="post-photo" accept="image/*" required />
+        </label>
+        <p class="hint">
+          Every post runs AI: your body/face become a mannequin; clothing and room stay the same.
+        </p>
+        <div class="mannequin-preview card soft" id="mannequin-preview" hidden>
+          <p class="card-label">Privacy preview</p>
+          <canvas id="mannequin-canvas" width="480" height="600"></canvas>
+        </div>
+        <div id="post-outfit-preview" class="post-outfit-preview" hidden></div>
+        <fieldset class="field">
+          <legend>Who can see this?</legend>
+          <label class="radio"><input type="radio" name="privacy" value="friends" checked /> Friends only</label>
+          <label class="radio"><input type="radio" name="privacy" value="public" /> Anyone</label>
+        </fieldset>
+        <p class="hint">Posts disappear after 72 hours. Posting counts toward your daily streak.</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn ghost" id="post-cancel">Cancel</button>
+          <button type="submit" class="btn primary" id="post-submit" disabled>Share</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- FRIEND COLLECTION -->
+    <dialog id="friend-dialog" class="dialog dialog-lg">
+      <div class="dialog-body">
+        <button type="button" class="dialog-x" id="friend-close" aria-label="Close">×</button>
+        <h2 id="friend-title">Collection</h2>
+        <div id="friend-collection" class="card-list"></div>
+      </div>
+    </dialog>
+
+    <script src="data.js?v=4"></script>
+    <script src="app.js?v=13"></script>
+  </body>
+</html>

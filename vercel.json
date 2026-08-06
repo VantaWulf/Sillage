@@ -1,0 +1,39 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
+  "framework": null,
+  "functions": {
+    "api/mannequin.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/outfit.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/posts.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/auth.js": {
+      "maxDuration": 15
+    },
+    "api/follow.js": {
+      "maxDuration": 15
+    },
+    "api/people.js": {
+      "maxDuration": 15
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ]
+}
