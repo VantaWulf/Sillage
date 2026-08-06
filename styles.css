@@ -637,12 +637,24 @@ body.auth-locked .tabbar {
 .post-none-btn {
   width: 100%;
   text-align: center;
+  min-height: 3rem;
+  font-size: 1rem;
+  position: relative;
+  z-index: 2;
+  -webkit-tap-highlight-color: rgba(30, 58, 138, 0.25);
+  touch-action: manipulation;
 }
 
 .post-none-btn.active {
   background: var(--blue);
   border-color: var(--blue);
   color: #fff;
+  box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.2);
+}
+
+#post-none-status.is-selected {
+  color: var(--blue);
+  font-weight: 700;
 }
 
 #add-photo-field.is-optional .hint {

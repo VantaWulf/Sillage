@@ -2822,24 +2822,54 @@ function setPostNoFragrance(on) {
   const hidden = document.getElementById("post-fragrance");
   const search = document.getElementById("post-search");
   const results = document.getElementById("post-results");
+  const status = document.getElementById("post-none-status");
+  const hint = document.getElementById("post-collection-hint");
   if (btn) {
     btn.classList.toggle("active", !!on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = on ? "✓ No fragrance selected" : "No fragrance today";
   }
   if (on) {
     if (hidden) hidden.value = NO_FRAGRANCE_ID;
     if (search) {
       search.value = "";
-      search.placeholder = "No fragrance selected";
+      search.placeholder = "No fragrance — bottle search off";
       search.disabled = true;
     }
     if (results) results.innerHTML = "";
+    if (status) {
+      status.textContent = "Selected: no fragrance. Add an outfit photo, then Share.";
+      status.classList.add("is-selected");
+    }
+    if (hint) hint.textContent = "Bottle search is off while “no fragrance” is selected.";
   } else {
     if (hidden && hidden.value === NO_FRAGRANCE_ID) hidden.value = "";
     if (search) {
       search.disabled = false;
       search.placeholder = "Search your bottles…";
     }
+    if (status) {
+      status.textContent = "Tap to post without a bottle — still need an outfit photo.";
+      status.classList.remove("is-selected");
+    }
+  }
+}
+
+function togglePostNoFragrance(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const btn = document.getElementById("post-no-fragrance");
+  if (!btn) return;
+  const turningOn = !btn.classList.contains("active");
+  if (turningOn) {
+    setPostNoFragrance(true);
+  } else {
+    setPostNoFragrance(false);
+    const hidden = document.getElementById("post-fragrance");
+    if (hidden) hidden.value = "";
+    renderPostCollectionPicker("");
   }
 }
 
@@ -2865,17 +2895,18 @@ function setupPost() {
     dialog?.showModal();
   });
 
-  document.getElementById("post-no-fragrance")?.addEventListener("click", () => {
-    const btn = document.getElementById("post-no-fragrance");
-    const turningOn = !btn?.classList.contains("active");
-    if (turningOn) {
-      setPostNoFragrance(true);
-    } else {
-      setPostNoFragrance(false);
-      const hidden = document.getElementById("post-fragrance");
-      if (hidden) hidden.value = "";
-      renderPostCollectionPicker("");
-    }
+  // Click + pointerup so it works on mobile / inside <dialog>
+  const noneBtn = document.getElementById("post-no-fragrance");
+  noneBtn?.addEventListener("click", togglePostNoFragrance);
+  noneBtn?.addEventListener("pointerup", (e) => {
+    // Avoid double-firing with click on desktop; mobile Safari sometimes drops click
+    if (e.pointerType === "touch") togglePostNoFragrance(e);
+  });
+  // Delegation fallback if the button node is ever recreated
+  document.getElementById("post-form")?.addEventListener("click", (e) => {
+    const t = e.target.closest("#post-no-fragrance");
+    if (!t) return;
+    togglePostNoFragrance(e);
   });
 
   fileInput?.addEventListener("change", async () => {
