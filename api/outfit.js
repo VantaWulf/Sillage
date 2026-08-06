@@ -128,10 +128,12 @@ function extractJson(text) {
 }
 
 async function identifyOutfit(dataUrl, apiKey) {
+  // Multimodal chat models (account-specific vision SKUs often missing)
   const models = [
-    process.env.SILLAGE_VISION_MODEL || "grok-2-vision-1212",
-    "grok-4-vision",
-    "grok-2-vision",
+    process.env.SILLAGE_VISION_MODEL || "grok-4.20-0309-non-reasoning",
+    "grok-4.5",
+    "grok-4.3",
+    "grok-4.20-0309-reasoning",
   ];
   let lastErr = null;
 

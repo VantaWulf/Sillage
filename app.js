@@ -2895,6 +2895,12 @@ function setupPost() {
     try {
       state.postMannequinDataUrl = await renderMannequin(file);
       if (preview) preview.querySelector(".card-label").textContent = "Finding outfit pieces…";
+      if (shopPreview) {
+        shopPreview.hidden = false;
+        shopPreview.innerHTML =
+          `<p class="outfit-shop-title">Shop the look</p>
+           <p class="hint-inline">Scanning clothes for places to buy similar items…</p>`;
+      }
       // Identify clothes on the privacy image (or original compressed)
       const idSource =
         state.postMannequinDataUrl || (await fileToCompressedDataUrl(file, 1024, 0.88));
@@ -2904,14 +2910,26 @@ function setupPost() {
           ? `Privacy preview · ${state.postOutfitItems.length} pieces tagged`
           : "Privacy preview";
       }
-      if (shopPreview && state.postOutfitItems.length) {
+      if (shopPreview) {
         shopPreview.hidden = false;
-        shopPreview.innerHTML = outfitShopHtml(state.postOutfitItems);
+        if (state.postOutfitItems.length) {
+          shopPreview.innerHTML = outfitShopHtml(state.postOutfitItems);
+        } else {
+          shopPreview.innerHTML =
+            `<p class="outfit-shop-title">Shop the look</p>
+             <p class="hint-inline">Couldn’t tag pieces this time — you can still Share. Try a clearer full-body photo.</p>`;
+        }
       }
       if (submit) submit.disabled = false;
     } catch (err) {
       console.error(err);
       if (preview) preview.querySelector(".card-label").textContent = "Could not process photo";
+      if (shopPreview) {
+        shopPreview.hidden = false;
+        shopPreview.innerHTML =
+          `<p class="outfit-shop-title">Shop the look</p>
+           <p class="hint-inline">Outfit scan failed — you can still Share the post.</p>`;
+      }
     }
   });
 
