@@ -2901,9 +2901,8 @@ function setupPost() {
           `<p class="outfit-shop-title">Shop the look</p>
            <p class="hint-inline">Scanning clothes for places to buy similar items…</p>`;
       }
-      // Identify clothes on the privacy image (or original compressed)
-      const idSource =
-        state.postMannequinDataUrl || (await fileToCompressedDataUrl(file, 1024, 0.88));
+      // Identify clothes — prefer a smaller JPEG so the vision API is reliable
+      const idSource = await fileToCompressedDataUrl(file, 768, 0.82);
       state.postOutfitItems = await identifyOutfitPieces(idSource);
       if (preview) {
         preview.querySelector(".card-label").textContent = state.postOutfitItems.length
