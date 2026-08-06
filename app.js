@@ -2895,19 +2895,16 @@ function setupPost() {
     dialog?.showModal();
   });
 
-  // Click + pointerup so it works on mobile / inside <dialog>
-  const noneBtn = document.getElementById("post-no-fragrance");
-  noneBtn?.addEventListener("click", togglePostNoFragrance);
-  noneBtn?.addEventListener("pointerup", (e) => {
-    // Avoid double-firing with click on desktop; mobile Safari sometimes drops click
-    if (e.pointerType === "touch") togglePostNoFragrance(e);
-  });
-  // Delegation fallback if the button node is ever recreated
-  document.getElementById("post-form")?.addEventListener("click", (e) => {
-    const t = e.target.closest("#post-no-fragrance");
-    if (!t) return;
-    togglePostNoFragrance(e);
-  });
+  // Single handler via form delegation (works if button is recreated; no double-toggle)
+  document.getElementById("post-form")?.addEventListener(
+    "click",
+    (e) => {
+      const t = e.target.closest("#post-no-fragrance");
+      if (!t) return;
+      togglePostNoFragrance(e);
+    },
+    true
+  );
 
   fileInput?.addEventListener("change", async () => {
     const file = fileInput.files?.[0];
